@@ -214,20 +214,22 @@ class Trainer(TrainerTemplate):
                         distenv=self.distenv)
 
 
-            # Log metrics to wandb
-            wandb.log({
-                'val/total_loss_step': metrics['loss_total'],
-                'val/rec_loss_step': metrics['loss_recon'], 
-                'val/quant_loss_step': metrics['loss_latent'],
-                'val/p_loss_step': metrics['loss_pcpt'],
-                'val/g_loss_step': metrics['loss_gen'],
-                'val/disc_loss_step': metrics['loss_disc'],
-                'val/logits_real_step': metrics.get('logits_real', 0.0),
-                'val/logits_fake_step': metrics.get('logits_fake', 0.0),
-                'epoch': epoch
-            })
+            
 
             if self.distenv.master:
+                # Log metrics to wandb
+                wandb.log({
+                    'val/total_loss_step': metrics['loss_total'],
+                    'val/rec_loss_step': metrics['loss_recon'], 
+                    'val/quant_loss_step': metrics['loss_latent'],
+                    'val/p_loss_step': metrics['loss_pcpt'],
+                    'val/g_loss_step': metrics['loss_gen'],
+                    'val/disc_loss_step': metrics['loss_disc'],
+                    'val/logits_real_step': metrics.get('logits_real', 0.0),
+                    'val/logits_fake_step': metrics.get('logits_fake', 0.0),
+                    'epoch': epoch
+                })
+                
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
 
@@ -321,22 +323,22 @@ class Trainer(TrainerTemplate):
             }
             accm.update(codes, metrics, count=1)
 
-            global_iter = epoch * len(self.loader_trn) + it
-            # Log metrics to wandb
-            wandb.log({
-                'train/total_loss_step': metrics['loss_total'],
-                'train/rec_loss_step': metrics['loss_recon'], 
-                'train/quant_loss_step': metrics['loss_latent'],
-                'train/p_loss_step': metrics['loss_pcpt'],
-                'train/g_loss_step': metrics['loss_gen'],
-                'train/disc_loss_step': metrics['loss_disc'],
-                'train/g_weight_step': metrics['g_weight'],
-                'train/logits_real_step': metrics.get('logits_real', 0.0),
-                'train/logits_fake_step': metrics.get('logits_fake', 0.0),
-                'train/lr_step': scheduler.get_last_lr()[0]
-            }, step=global_iter)
-
             if self.distenv.master:
+                global_iter = epoch * len(self.loader_trn) + it
+                # Log metrics to wandb
+                wandb.log({
+                    'train/total_loss_step': metrics['loss_total'],
+                    'train/rec_loss_step': metrics['loss_recon'], 
+                    'train/quant_loss_step': metrics['loss_latent'],
+                    'train/p_loss_step': metrics['loss_pcpt'],
+                    'train/g_loss_step': metrics['loss_gen'],
+                    'train/disc_loss_step': metrics['loss_disc'],
+                    'train/g_weight_step': metrics['g_weight'],
+                    'train/logits_real_step': metrics.get('logits_real', 0.0),
+                    'train/logits_fake_step': metrics.get('logits_fake', 0.0),
+                    'train/lr_step': scheduler.get_last_lr()[0]
+                }, step=global_iter)
+
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
