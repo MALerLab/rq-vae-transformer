@@ -228,8 +228,8 @@ class Trainer(TrainerTemplate):
                     'val/logits_real_step': metrics.get('logits_real', 0.0),
                     'val/logits_fake_step': metrics.get('logits_fake', 0.0),
                     'epoch': epoch
-                })
-                
+                }, step=it + len(self.loader_val) * epoch)
+
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
 
@@ -397,7 +397,7 @@ class Trainer(TrainerTemplate):
                 log_dict[f'{mode}/learning_rate'] = scheduler.get_last_lr()[0]
 
             # Log to wandb
-            wandb.log(log_dict, step=epoch)
+            wandb.log(log_dict)
 
             # Print summary line
             line = f"""ep:{epoch}, {mode:10s}, """
