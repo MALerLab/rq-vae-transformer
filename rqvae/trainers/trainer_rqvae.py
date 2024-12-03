@@ -18,9 +18,13 @@ import os
 import torch
 import torchvision
 from tqdm import tqdm
+import wandb
+from omegaconf import OmegaConf
 
 from rqvae.losses.vqgan import create_vqgan_loss, create_discriminator_with_optimizer_scheduler
 import rqvae.utils.dist as dist_utils
+
+from datetime import datetime
 
 from .accumulator import AccmStage1WithGAN
 from .trainer import TrainerTemplate
@@ -48,6 +52,10 @@ class Trainer(TrainerTemplate):
             self.n_codebook = 1
         else:
             self.n_codebook = self.config.arch.hparams.code_shape[-1]
+
+        # Run name
+        self.run_name = f"{datetime.now().strftime('%Y-%m-%dT%H-%M-%S')}_{self.config.dataset.type}_f{2**(len(self.config.arch.ddconfig.ch_mult)-1)}_c{self.config.arch.hparams.n_embed}_d{self.config.arch.hparams.embed_dim}_RQVAE_{self.config.runtime.args.postfix}"
+        print(self.run_name)
 
         # GAN related part
         gan_config = self.config.gan
@@ -84,6 +92,15 @@ class Trainer(TrainerTemplate):
             self.get_last_layer = self.model.module.get_last_layer
         else:
             self.get_last_layer = self.model.get_last_layer
+
+        # Add wandb initialization if not already initialized
+        if self.distenv.master and not wandb.run:
+            wandb.init(
+                project="OCRVQGAN-LSDSQ",
+                entity="maler",
+                config=OmegaConf.to_container(self.config, resolve=True),
+                name=self.run_name,
+            )
 
     def get_accm(self):
         config = self.config
@@ -296,11 +313,27 @@ class Trainer(TrainerTemplate):
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
                 pbar.set_description(line)
 
+
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
                 if (global_iter+1) % 50 == 0:
                     for key, value in metrics.items():
                         self.writer.add_scalar(f'loss_step/{key}', value, 'train', global_iter)
+                    # Log metrics to wandb
+                    wandb.log({
+                        'train/epoch': epoch,
+                        'train/iter': it,
+                        'train/loss_total': metrics['loss_total'],
+                        'train/loss_recon': metrics['loss_recon'], 
+                        'train/loss_latent': metrics['loss_latent'],
+                        'train/loss_pcpt': metrics['loss_pcpt'],
+                        'train/loss_gen': metrics['loss_gen'],
+                        'train/loss_disc': metrics['loss_disc'],
+                        'train/g_weight': metrics['g_weight'],
+                        'train/logits_real': metrics.get('logits_real', 0.0),
+                        'train/logits_fake': metrics.get('logits_fake', 0.0),
+                        'train/lr': scheduler.get_last_lr()[0]
+                    }, step=global_iter)
                     self.writer.add_scalar('lr_step', scheduler.get_last_lr()[0], 'train', global_iter)
                     if use_discriminator:
                         self.writer.add_scalar('d_lr_step', self.disc_scheduler.get_last_lr()[0], 'train', global_iter)
@@ -311,43 +344,53 @@ class Trainer(TrainerTemplate):
                     grid = torchvision.utils.make_grid(grid, nrow=8)
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
 
+
         summary = accm.get_summary()
         summary['xs'] = xs
 
         return summary
 
     def logging(self, summary, scheduler=None, epoch=0, mode='train'):
-        if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
-            self.reconstruct(summary['xs'], epoch, mode)
-            if self.n_codebook > 1:
-                for code_idx in range(self.n_codebook):
-                    self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'select')
-                    self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'add')
+        if self.distenv.master:  # Only log on master process
+            # Log reconstructions
+            if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
+                self.reconstruct(summary['xs'], epoch, mode)
+                if self.n_codebook > 1:
+                    for code_idx in range(self.n_codebook):
+                        self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'select')
+                        self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'add')
 
-        for key, value in summary.metrics.items():
-            self.writer.add_scalar(f'loss/{key}', summary[key], mode, epoch)
+            # Log metrics to wandb
+            log_dict = {}
+            
+            # Log loss metrics
+            for key, value in summary.metrics.items():
+                log_dict[f'{mode}/{key}'] = summary[key]
 
-        for level, ent_codes in enumerate(summary['ent_codes_wo_pad']):
-            for book_idx, ent_code in enumerate(ent_codes):
-                self.writer.add_scalar(f'codebooks-wo-pad/entropy-level-{level}/codebook{book_idx}',
-                                       ent_code, mode, epoch)
-
-        if summary['ent_codes_w_pad'] is not None:
-            for level, ent_codes in enumerate(summary['ent_codes_w_pad']):
+            # Log codebook entropies
+            for level, ent_codes in enumerate(summary['ent_codes_wo_pad']):
                 for book_idx, ent_code in enumerate(ent_codes):
-                    self.writer.add_scalar(f'codebooks-w-pad/entropy-level-{level}/codebook{book_idx}',
-                                           ent_code, mode, epoch)
+                    log_dict[f'{mode}/codebooks-wo-pad/entropy-level-{level}/codebook{book_idx}'] = ent_code
 
-        if mode == 'train':
-            self.writer.add_scalar('lr', scheduler.get_last_lr()[0], mode, epoch)
+            if summary['ent_codes_w_pad'] is not None:
+                for level, ent_codes in enumerate(summary['ent_codes_w_pad']):
+                    for book_idx, ent_code in enumerate(ent_codes):
+                        log_dict[f'{mode}/codebooks-w-pad/entropy-level-{level}/codebook{book_idx}'] = ent_code
 
-        line = f"""ep:{epoch}, {mode:10s}, """
-        line += summary.print_line()
-        line += f""", """
-        if scheduler:
-            line += f"""lr: {scheduler.get_last_lr()[0]:e}"""
+            # Log learning rate
+            if mode == 'train' and scheduler:
+                log_dict[f'{mode}/learning_rate'] = scheduler.get_last_lr()[0]
 
-        logger.info(line)
+            # Log to wandb
+            wandb.log(log_dict, step=epoch)
+
+            # Print summary line
+            line = f"""ep:{epoch}, {mode:10s}, """
+            line += summary.print_line()
+            line += f""", """
+            if scheduler:
+                line += f"""lr: {scheduler.get_last_lr()[0]:e}"""
+            logger.info(line)
 
     @torch.no_grad()
     def reconstruct(self, xs, epoch, mode='valid'):
@@ -360,7 +403,11 @@ class Trainer(TrainerTemplate):
 
         grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
         grid = torchvision.utils.make_grid(grid, nrow=8)
-        self.writer.add_image('reconstruction', grid, mode, epoch)
+        
+        if self.distenv.master:
+            wandb.log({
+                f'{mode}/reconstruction': wandb.Image(grid)
+            }, step=epoch)
 
     @torch.no_grad()
     def reconstruct_partial_codes(self, xs, epoch, code_idx, mode='valid', decode_type='select'):

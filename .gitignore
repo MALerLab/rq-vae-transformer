@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+data/Olimpic_grandstaff_128_gray/
+logs/
+wandb/
+
+rqvae/losses/vqgan/.caches/*

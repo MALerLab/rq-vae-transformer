@@ -1,7 +1,7 @@
 dataset:
-  type: imagenet
+  type: Olimpic_grandstaff_128_gray
   transforms:
-    type: imagenet256x256
+    type: grandstaff128to112
 
 arch:
   type: rq-vae
@@ -9,10 +9,10 @@ arch:
   hparams:
     bottleneck_type: rq
     embed_dim: 256 # quant dim
-    n_embed: 16384 # n_codebook
-    latent_shape: [ 8, 8, 256 ]  # could be inferred: H=W=resolution / (2 ** num_down), D=embed_dim
-    code_shape: [ 8, 8, 4 ]
-    shared_codebook: true
+    n_embed: 4096 # n_codebook
+    latent_shape: [ 7, 7, 256 ]  # could be inferred: H=W=resolution / (2 ** num_down), D=embed_dim
+    code_shape: [ 7, 7, 4 ] # 7x7x4 112x112라서 112/16=7
+    shared_codebook: True
     decay: 0.99
     restart_unused_codes: true
 
@@ -22,10 +22,10 @@ arch:
     double_z: false
     z_channels: 256 # enc out channels
     resolution: 256 # 인풋 이미지 한쪽(가로/세로)길이?
-    in_channels: 3 # enc in ch
-    out_ch: 3 # dec out ch
+    in_channels: 1 # enc in ch
+    out_ch: 1 # dec out ch
     ch: 128 # enc/dec latent ch
-    ch_mult: [ 1, 1, 2, 2, 4, 4]  # 레이어 수(압축률: 2^(len(ch_mult)-1) 2^4=16 -> 코드 하나 커버리지 16*16픽셀
+    ch_mult: [ 1, 1, 2, 2, 4]  # 레이어 수(압축률: 2^(len(ch_mult)-1) 2^4=16 -> 코드 하나 커버리지 16*16픽셀
     num_res_blocks: 2
     attn_resolutions: [ 8 ]
     dropout: 0.00
@@ -47,8 +47,8 @@ optimizer:
 
 
 experiment:
-  batch_size: 32
-  epochs: 10
+  batch_size: 256
+  epochs: 20000
   save_ckpt_freq: 5
   test_freq: 1
 
@@ -66,4 +66,4 @@ gan:
     gen_loss: vanilla
     disc_weight: 0.75
     perceptual_weight: 1.0
-    disc_start: 0
+    disc_start: 10000000

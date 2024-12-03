@@ -20,10 +20,18 @@ import torchvision
 from torchvision.datasets import ImageNet
 
 from .lsun import LSUNClass
-from .ffhq import FFHQ
+from .ffhq import ImageFolder, FFHQ
 from .transforms import create_transforms
 
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
+
+
+class Grandstaff(ImageFolder):
+    train_list_file = 'data/Olimpic_grandstaff_128_gray/train.txt'
+    val_list_file = 'data/Olimpic_grandstaff_128_gray/test.txt'
+
+    def __init__(self, root, split='train', **kwargs):
+        super().__init__(root, Grandstaff.train_list_file, Grandstaff.val_list_file, split, **kwargs)
 
 
 def create_dataset(config, is_eval=False, logger=None):
@@ -51,7 +59,11 @@ def create_dataset(config, is_eval=False, logger=None):
         root = root if root else 'data/lsun'
         category_name = config.dataset.type.split('-')[-1]
         dataset_trn = LSUNClass(root, category_name=category_name, transform=transforms_trn)
-        dataset_val = LSUNClass(root, category_name=category_name, transform=transforms_trn)
+        dataset_val = LSUNClass(root, category_name=category_name, transform=transforms_val)
+    elif config.dataset.type == 'Olimpic_grandstaff_128_gray':
+        root = root if root else 'data/Olimpic_grandstaff_128_gray'
+        dataset_trn = Grandstaff(root, split='train', transform=transforms_trn)
+        dataset_val = Grandstaff(root, split='val', transform=transforms_val)
     else:
         raise ValueError('%s not supported...' % config.dataset.type)
 
