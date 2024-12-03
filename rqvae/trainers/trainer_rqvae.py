@@ -321,6 +321,7 @@ class Trainer(TrainerTemplate):
             }
             accm.update(codes, metrics, count=1)
 
+            global_iter = epoch * len(self.loader_trn) + it
             # Log metrics to wandb
             wandb.log({
                 'train/total_loss_step': metrics['loss_total'],
@@ -343,7 +344,6 @@ class Trainer(TrainerTemplate):
 
 
                 # per-step logging
-                global_iter = epoch * len(self.loader_trn) + it
                 if (global_iter+1) % 50 == 0:
                     for key, value in metrics.items():
                         self.writer.add_scalar(f'loss_step/{key}', value, 'train', global_iter)
