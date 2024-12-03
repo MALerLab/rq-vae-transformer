@@ -213,6 +213,20 @@ class Trainer(TrainerTemplate):
                         sync=True,
                         distenv=self.distenv)
 
+
+            # Log metrics to wandb
+            wandb.log({
+                'val/total_loss_step': metrics['loss_total'],
+                'val/rec_loss_step': metrics['loss_recon'], 
+                'val/quant_loss_step': metrics['loss_latent'],
+                'val/p_loss_step': metrics['loss_pcpt'],
+                'val/g_loss_step': metrics['loss_gen'],
+                'val/disc_loss_step': metrics['loss_disc'],
+                'val/logits_real_step': metrics.get('logits_real', 0.0),
+                'val/logits_fake_step': metrics.get('logits_fake', 0.0),
+                'epoch': epoch
+            })
+
             if self.distenv.master:
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
@@ -307,6 +321,20 @@ class Trainer(TrainerTemplate):
             }
             accm.update(codes, metrics, count=1)
 
+            # Log metrics to wandb
+            wandb.log({
+                'train/total_loss_step': metrics['loss_total'],
+                'train/rec_loss_step': metrics['loss_recon'], 
+                'train/quant_loss_step': metrics['loss_latent'],
+                'train/p_loss_step': metrics['loss_pcpt'],
+                'train/g_loss_step': metrics['loss_gen'],
+                'train/disc_loss_step': metrics['loss_disc'],
+                'train/g_weight_step': metrics['g_weight'],
+                'train/logits_real_step': metrics.get('logits_real', 0.0),
+                'train/logits_fake_step': metrics.get('logits_fake', 0.0),
+                'train/lr_step': scheduler.get_last_lr()[0]
+            }, step=global_iter)
+
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
@@ -319,21 +347,6 @@ class Trainer(TrainerTemplate):
                 if (global_iter+1) % 50 == 0:
                     for key, value in metrics.items():
                         self.writer.add_scalar(f'loss_step/{key}', value, 'train', global_iter)
-                    # Log metrics to wandb
-                    wandb.log({
-                        'train/epoch': epoch,
-                        'train/iter': it,
-                        'train/loss_total': metrics['loss_total'],
-                        'train/loss_recon': metrics['loss_recon'], 
-                        'train/loss_latent': metrics['loss_latent'],
-                        'train/loss_pcpt': metrics['loss_pcpt'],
-                        'train/loss_gen': metrics['loss_gen'],
-                        'train/loss_disc': metrics['loss_disc'],
-                        'train/g_weight': metrics['g_weight'],
-                        'train/logits_real': metrics.get('logits_real', 0.0),
-                        'train/logits_fake': metrics.get('logits_fake', 0.0),
-                        'train/lr': scheduler.get_last_lr()[0]
-                    }, step=global_iter)
                     self.writer.add_scalar('lr_step', scheduler.get_last_lr()[0], 'train', global_iter)
                     if use_discriminator:
                         self.writer.add_scalar('d_lr_step', self.disc_scheduler.get_last_lr()[0], 'train', global_iter)
