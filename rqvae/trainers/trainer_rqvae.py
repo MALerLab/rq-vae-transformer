@@ -101,6 +101,9 @@ class Trainer(TrainerTemplate):
                 config=OmegaConf.to_container(self.config, resolve=True),
                 name=self.run_name,
             )
+            wandb.define_metric("train_step")
+            wandb.define_metric("val_step")
+            wandb.define_metric("epoch_step")
 
     def get_accm(self):
         config = self.config
@@ -227,8 +230,8 @@ class Trainer(TrainerTemplate):
                     'val/disc_loss_step': metrics['loss_disc'],
                     'val/logits_real_step': metrics.get('logits_real', 0.0),
                     'val/logits_fake_step': metrics.get('logits_fake', 0.0),
-                    'epoch': epoch
-                }, step=it + len(self.loader_val) * epoch)
+                    'val_step': it + len(self.loader_val) * epoch
+                })
 
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
@@ -336,8 +339,9 @@ class Trainer(TrainerTemplate):
                     'train/g_weight_step': metrics['g_weight'],
                     'train/logits_real_step': metrics.get('logits_real', 0.0),
                     'train/logits_fake_step': metrics.get('logits_fake', 0.0),
-                    'train/lr_step': scheduler.get_last_lr()[0]
-                }, step=global_iter)
+                    'train/lr_step': scheduler.get_last_lr()[0],
+                    'train_step': global_iter
+                })
 
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
@@ -396,8 +400,10 @@ class Trainer(TrainerTemplate):
             if mode == 'train' and scheduler:
                 log_dict[f'{mode}/learning_rate'] = scheduler.get_last_lr()[0]
 
+            wandb_dict = log_dict.copy()
+            wandb_dict['epoch_step'] = epoch
             # Log to wandb
-            wandb.log(log_dict)
+            wandb.log(wandb_dict)
 
             # Print summary line
             line = f"""ep:{epoch}, {mode:10s}, """
@@ -421,8 +427,9 @@ class Trainer(TrainerTemplate):
         
         if self.distenv.master:
             wandb.log({
-                f'{mode}/reconstruction': wandb.Image(grid)
-            }, step=epoch)
+                f'{mode}/reconstruction': wandb.Image(grid),
+                'epoch_step': epoch,
+            })
 
     @torch.no_grad()
     def reconstruct_partial_codes(self, xs, epoch, code_idx, mode='valid', decode_type='select'):
