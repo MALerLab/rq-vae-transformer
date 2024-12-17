@@ -5,7 +5,7 @@ pyflakes==2.2.0
 PyYAML==5.3.1
 tqdm==4.46.0
 tensorboard==2.13.0
-scikit-learn==1.0
+scikit-learn>=1.0.2
 omegaconf
 pickle5
 matplotlib
@@ -14,4 +14,4 @@ ftfy
 regex
 datadings
 pycocotools
-git+https://github.com/openai/CLIP.git
+# git+https://github.com/openai/CLIP.git
