@@ -15,7 +15,6 @@ from rqvae.models import create_model
 
 
 if __name__ == "__main__":
-  # model_name = "sqocremavq_16_240_gray_unfit"
   model_name = "gsrqvae_f16_c1024_k4_unshared_128p_gray_unfit" # `{ds_type(gs: grandstaff, sq: string quartet)model_type(rqvae, emavq)}_f{compression_rate}_c{codebook_size}_k{n_codebook}_{shared/unshared embedding between codbooks for RQ}_{img_height}p_{gray for grayscale}_{fit/unfit training(unfit means random cropping ds image so that the model can learn to be robust to the slight pixel shifts)}`
   config_path = list((Path("logs")/ model_name).rglob("config.yaml"))[0]
   config = OmegaConf.load(config_path)
@@ -30,7 +29,6 @@ if __name__ == "__main__":
   
   torch.set_grad_enabled(False)
   
-  # image_path_list = list(Path("/home/sake/userdata/latent_score_dataset/string_quartet/segments").rglob("*/*/images/flattened_resampled/240_gray/*.png"))
   image_path_list = list(Path("/home/sake/userdata/olimpic_dataset/grandstaff-lmx").rglob("**/*_128.jpg"))
   filtered_pathlist = []
   for p in image_path_list:
@@ -54,8 +52,9 @@ if __name__ == "__main__":
     image = totensor(image)
     image = normalize(image)
     
+    # pixel shifting to get 16*4 shifted tokens for a single image
     x_y_shifted_tokens = []
-    for i in range(16): # pixel shifting to get 16*4 shifted tokens for a single image
+    for i in range(16):
       x_shifted_img = image[...,i:image.shape[-1]-15+i]
       y_shifted_imgs = []
       for j in range(4):
@@ -65,4 +64,3 @@ if __name__ == "__main__":
       x_y_shifted_tokens.append(out.squeeze(0))
     x_y_shifted_tokens = torch.stack(x_y_shifted_tokens)
     torch.save(x_y_shifted_tokens, str(save_path))
-    # break
