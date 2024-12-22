@@ -296,7 +296,7 @@ class RQBottleneck(nn.Module):
     
     @torch.no_grad()
     def embed_code(self, code):
-        assert code.shape[1:] == self.code_shape
+        # assert code.shape[1:] == self.code_shape
         
         code_slices = torch.chunk(code, chunks=code.shape[-1], dim=-1)
 
@@ -346,7 +346,7 @@ class RQBottleneck(nn.Module):
             embeds (Tensor): quantized feature map
         """
 
-        assert code.shape[1:] == self.code_shape
+        # assert code.shape[1:] == self.code_shape
         assert code_idx < code.shape[-1]
         
         B, h, w, _ = code.shape
