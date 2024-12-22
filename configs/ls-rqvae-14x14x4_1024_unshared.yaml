@@ -11,7 +11,7 @@ arch:
     embed_dim: 256 # quant dim
     n_embed: 1024 # codebook_size
     latent_shape: [ 14, 14, 256 ]  # could be inferred: H=W=resolution / (2 ** num_down), D=embed_dim
-    code_shape: [ 14, 14, 4 ] # 7x7x4 -> 112x112px 112/16(compression rate)=7, last 4 means 4 codebooks(k=4)
+    code_shape: [ 14, 14, 4 ] # 14x14x4 -> 224x224px 224/16(compression rate)=14, last 4 means 4 codebooks(k=4)
     shared_codebook: False
     decay: 0.99
     restart_unused_codes: true
