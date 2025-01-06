@@ -18,10 +18,13 @@ import torch
 from torch.utils.data import Subset
 import torchvision
 from torchvision.datasets import ImageNet
+from tqdm import tqdm
 
 from .lsun import LSUNClass
 from .ffhq import ImageFolder, FFHQ
 from .transforms import create_transforms
+
+import torchvision.transforms as transforms
 
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
 
@@ -32,6 +35,32 @@ class ScoreDataset(ImageFolder):
         val_list_file = f'{root}/test.txt'
         super().__init__(root, train_list_file, val_list_file, split, **kwargs)
 
+class MultiHeightScoreDataset(ScoreDataset):
+    def __init__(self, root, split='train', **kwargs):
+        super().__init__(root, split, **kwargs)
+        
+        heights = []
+        for sample in tqdm(self.samples, desc='Loading image heights'):
+            img = self.loader(sample)
+            heights.append(img.height)
+
+        self.heights = heights
+        # Filter indices where height > 256
+        self.big_item_idx = [i for i, h in enumerate(heights) if h > 256]
+
+        self.big_transforms = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.RandomCrop(256),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5])
+        ])
+
+    def get_big_items(self, index, with_transform=True):
+        idx = self.big_item_idx[index]
+        sample, _ = super().__getitem__(idx, with_transform=False)
+        sample = self.big_transforms(sample)
+        return sample, 0
+    
 # class Grandstaff(ImageFolder):
 #     train_list_file = 'data/Olimpic_grandstaff_128_gray/train.txt'
 #     val_list_file = 'data/Olimpic_grandstaff_128_gray/test.txt'
@@ -74,6 +103,10 @@ def create_dataset(config, is_eval=False, logger=None):
         root = root if root else 'data/LSDSQ_flattened_240_gray'
         dataset_trn = ScoreDataset(root, split='train', transform=transforms_trn)
         dataset_val = ScoreDataset(root, split='val', transform=transforms_val)
+    elif config.dataset.type == 'LSD_360anchored_gray':
+        root = root if root else 'data/LSD_360anchored_gray'
+        dataset_trn = MultiHeightScoreDataset(root, split='train', transform=transforms_trn)
+        dataset_val = MultiHeightScoreDataset(root, split='val', transform=transforms_val)
     else:
         raise ValueError('%s not supported...' % config.dataset.type)
 
