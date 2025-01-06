@@ -130,6 +130,7 @@ dmypy.json
 
 data/LSDSQ_flattened_240_gray/*
 data/Olimpic_grandstaff_128_gray/*
+data/LSD_360anchored_gray/*
 logs/
 wandb/
 
