@@ -23,6 +23,7 @@ from omegaconf import OmegaConf
 
 from rqvae.losses.vqgan import create_vqgan_loss, create_discriminator_with_optimizer_scheduler
 import rqvae.utils.dist as dist_utils
+from rqvae.img_datasets import MultiHeightScoreDataset
 
 from datetime import datetime
 
@@ -235,7 +236,7 @@ class Trainer(TrainerTemplate):
 
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
-
+                    
         line = accm.get_summary(n_inst).print_line()
 
         if self.distenv.master and verbose:
@@ -379,6 +380,14 @@ class Trainer(TrainerTemplate):
                         self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'select')
                         self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'add')
 
+                if isinstance(self.dataset_val, MultiHeightScoreDataset):
+                    xll = []
+                    it = epoch % (len(self.dataset_val.big_item_idx) // 16 - 1)
+                    for i in range(16 * it, 16 * (it + 1)):
+                        xl = self.dataset_val.get_big_items(i)[0]
+                        xll.append(xl)
+                    xll = torch.stack(xll, dim=0)
+                    self.reconstruct_big(xll, epoch=epoch, mode=mode)
             # Log metrics to wandb
             log_dict = {}
             
@@ -428,6 +437,25 @@ class Trainer(TrainerTemplate):
         if self.distenv.master:
             wandb.log({
                 f'{mode}/reconstruction': wandb.Image(grid),
+                'epoch_step': epoch,
+            })
+
+    @torch.no_grad()
+    def reconstruct_big(self, xs, epoch, mode='valid'):
+        print("!!!!!!!!\n")
+        model = self.model_ema if 'ema' in mode else self.model
+        model.eval()
+
+        xs_real = xs[:16].to(self.device)
+        xs_recon = model(xs_real)[0]
+        xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
+
+        grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
+        grid = torchvision.utils.make_grid(grid, nrow=8)
+        
+        if self.distenv.master:
+            wandb.log({
+                f'{mode}/reconstruction_256px': wandb.Image(grid),
                 'epoch_step': epoch,
             })
 
