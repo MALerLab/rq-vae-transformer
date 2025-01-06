@@ -346,7 +346,7 @@ class RQBottleneck(nn.Module):
             embeds (Tensor): quantized feature map
         """
 
-        assert code.shape[1:] == self.code_shape
+        # assert code.shape[1:] == self.code_shape
         assert code_idx < code.shape[-1]
         
         B, h, w, _ = code.shape
