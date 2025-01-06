@@ -3,11 +3,6 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
-[[source]]
-url = "https://github.com/openai/CLIP.git"
-verify_ssl = true
-name = "clip"
-
 [packages]
 easydict = "==1.9"
 ipdb = "==0.13.3"
@@ -23,7 +18,8 @@ ftfy = "*"
 regex = "*"
 datadings = "*"
 pycocotools = "*"
-clip = {version = "*", index = "clip"}
+clip = {editable = true, git = "https://github.com/openai/CLIP.git"}
+numpy = "==1.23.5"
 
 [dev-packages]
 
