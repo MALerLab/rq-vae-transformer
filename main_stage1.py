@@ -19,6 +19,8 @@ import math
 import torch
 import torch.distributed as dist
 
+from omegaconf import DictConfig
+
 import rqvae.utils.dist as dist_utils
 from rqvae.models import create_model
 from rqvae.trainers import create_trainer
@@ -68,7 +70,12 @@ if __name__ == '__main__':
     trainer = create_trainer(config)
 
     train_epochs = config.experiment.epochs
-    steps_per_epoch = math.ceil(len(dataset_trn) / (config.experiment.batch_size * distenv.world_size))
+
+    if isinstance(config.experiment.batch_size, DictConfig): # Dynamic batch size for each bucket when MultiHeightScoreDataset is used
+        total_steps = sum(math.ceil(len(dataset_trn.bucket_indices[bucket]) / (batch_size * distenv.world_size)) for bucket, batch_size in config.experiment.batch_size.items())
+        steps_per_epoch = total_steps
+    else:
+        steps_per_epoch = math.ceil(len(dataset_trn) / (config.experiment.batch_size * distenv.world_size))
     epoch_st = 0
 
     if distenv.master:
