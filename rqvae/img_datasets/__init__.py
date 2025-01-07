@@ -19,6 +19,7 @@ from torch.utils.data import Subset
 import torchvision
 from torchvision.datasets import ImageNet
 from tqdm import tqdm
+from omegaconf import DictConfig
 
 from .lsun import LSUNClass
 from .ffhq import ImageFolder, FFHQ
@@ -28,6 +29,51 @@ import torchvision.transforms as transforms
 
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
 
+class VariableBatchDistributedBucketSampler(torch.utils.data.distributed.DistributedSampler):
+  def __init__(self, dataset, batch_sizes, num_replicas=None, rank=None, shuffle=True, seed=0):
+    super().__init__(dataset, num_replicas=num_replicas, rank=rank, shuffle=shuffle, seed=seed)
+    self.buckets = list(dataset.bucket_indices.keys())
+    self.bucket_sizes = dataset.get_bucket_sizes()
+    # Only print once from rank 0
+    if rank == 0:
+      print("Bucket sizes:", self.bucket_sizes)
+    self.batch_sizes = batch_sizes
+
+  def __iter__(self):
+    # deterministically shuffle based on epoch and seed
+    g = torch.Generator()
+    g.manual_seed(self.seed + self.epoch)
+
+    indices = []
+    for bucket in self.buckets:
+      bucket_indices = self.dataset.bucket_indices[bucket]
+      batch_size = self.batch_sizes[bucket]
+      
+      if self.shuffle:
+        # Shuffle indices within each bucket
+        indices_bucket = torch.randperm(len(bucket_indices), generator=g).tolist()
+        indices_bucket = [bucket_indices[i] for i in indices_bucket]
+      else:
+        indices_bucket = bucket_indices
+
+      # Add padding to make divisible by (batch_size * num_replicas)
+      padding_size = (batch_size * self.num_replicas - len(indices_bucket) % (batch_size * self.num_replicas)) % (batch_size * self.num_replicas)
+      if padding_size > 0:
+        indices_bucket = indices_bucket + indices_bucket[:padding_size]
+
+      # Verify divisibility before subsampling
+      if len(indices_bucket) % (batch_size * self.num_replicas) != 0:
+        raise ValueError(f"Bucket {bucket} size {len(indices_bucket)} is not divisible by batch_size ({batch_size}) * num_replicas ({self.num_replicas})")
+
+      # Subsample for this rank
+      indices_bucket = indices_bucket[self.rank * batch_size:len(indices_bucket):self.num_replicas * batch_size]
+      indices.extend(indices_bucket)
+
+    if self.shuffle:
+      # Shuffle all indices
+      indices = torch.tensor(indices)[torch.randperm(len(indices), generator=g)].tolist()
+
+    return iter(indices)
 
 class ScoreDataset(ImageFolder):
     def __init__(self, root, split='train', **kwargs):
@@ -45,22 +91,72 @@ class MultiHeightScoreDataset(ScoreDataset):
             heights.append(img.height)
 
         self.heights = heights
-        # Filter indices where height > 256
-        self.big_item_idx = [i for i, h in enumerate(heights) if h > 256]
+        
+        # Create bucket indices that will be used by DistributedBucketSampler
+        self.bucket_indices = {
+            '70_130': [i for i, h in enumerate(heights) if 70 <= h < 130],
+            '130_260': [i for i, h in enumerate(heights) if 130 <= h < 260], 
+            '260_360': [i for i, h in enumerate(heights) if 260 <= h < 360],
+            '360_390': [i for i, h in enumerate(heights) if 360 <= h <= 390]
+        }
 
-        self.big_transforms = transforms.Compose([
-            transforms.Grayscale(num_output_channels=1),
-            transforms.RandomCrop(256),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5])
-        ])
+        # Get indices for images with height >= 260px
+        self.big_indices = self.bucket_indices['260_360'] + self.bucket_indices['360_390']
 
-    def get_big_items(self, index, with_transform=True):
-        idx = self.big_item_idx[index]
-        sample, _ = super().__getitem__(idx, with_transform=False)
-        sample = self.big_transforms(sample)
+        # Create transforms for each bucket
+        self.bucket_transforms = {
+            '70_130': transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.RandomCrop(64),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5])
+            ]),
+            '130_260': transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.RandomCrop(128),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5])
+            ]),
+            '260_360': transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.RandomCrop(256),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5])
+            ]),
+            '360_390': transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
+                transforms.RandomCrop(352),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5])
+            ])
+        }
+
+    def get_bucket_sizes(self):
+        return {k: len(v) for k, v in self.bucket_indices.items()}
+
+    def __getitem__(self, index, with_transform=True):
+        sample, _ = super().__getitem__(index, with_transform=False)
+        height = self.heights[index]
+        
+        if with_transform:
+            if 70 <= height < 130:
+                sample = self.bucket_transforms['70_130'](sample)
+            elif 130 <= height < 260:
+                sample = self.bucket_transforms['130_260'](sample)
+            elif 260 <= height < 360:
+                sample = self.bucket_transforms['260_360'](sample)
+            elif 360 <= height <= 390:
+                sample = self.bucket_transforms['360_390'](sample)
+                
         return sample, 0
     
+    def get_big_items(self, idx):
+        # Get the image at specified index
+        sample, _ = super().__getitem__(self.big_indices[idx], with_transform=False)
+        sample = self.bucket_transforms['260_360'](sample)
+        
+        return sample, 0
+
 # class Grandstaff(ImageFolder):
 #     train_list_file = 'data/Olimpic_grandstaff_128_gray/train.txt'
 #     val_list_file = 'data/Olimpic_grandstaff_128_gray/test.txt'
@@ -105,6 +201,7 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = ScoreDataset(root, split='val', transform=transforms_val)
     elif config.dataset.type == 'LSD_360anchored_gray':
         root = root if root else 'data/LSD_360anchored_gray'
+        assert isinstance(config.experiment.batch_size, DictConfig)
         dataset_trn = MultiHeightScoreDataset(root, split='train', transform=transforms_trn)
         dataset_val = MultiHeightScoreDataset(root, split='val', transform=transforms_val)
     else:
