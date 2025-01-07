@@ -173,9 +173,14 @@ class Trainer(TrainerTemplate):
 
         model.eval()
         discriminator.eval()
+        
+        sample_count = 0
+
         for it, inputs in pbar:
             model.zero_grad()
             xs = inputs[0].to(self.device)
+            
+            sample_count += xs.shape[0]
 
             outputs = model(xs)
             xs_recon = outputs[0]
@@ -217,9 +222,6 @@ class Trainer(TrainerTemplate):
                         sync=True,
                         distenv=self.distenv)
 
-
-            
-
             if self.distenv.master:
                 # Log metrics to wandb
                 wandb.log({
@@ -236,20 +238,19 @@ class Trainer(TrainerTemplate):
 
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
-                    
-        line = accm.get_summary(n_inst).print_line()
+        line = accm.get_summary(sample_count).print_line()
 
-        if self.distenv.master and verbose:
-            mode = "valid" if valid else "train"
-            mode = "%s_ema" % mode if ema else mode
-            logger.info(f"""{mode:10s}, """ + line)
-            self.reconstruct(xs, epoch=0, mode=mode)
-            if self.n_codebook > 1:
-                for code_idx in range(self.n_codebook):
-                    self.reconstruct_partial_codes(xs, 0, code_idx, mode, 'select')
-                    self.reconstruct_partial_codes(xs, 0, code_idx, mode, 'add')
+        # if self.distenv.master and verbose:
+        #     mode = "valid" if valid else "train"
+        #     mode = "%s_ema" % mode if ema else mode
+        #     logger.info(f"""{mode:10s}, """ + line)
+        #     self.reconstruct(xs, epoch=0, mode=mode)
+        #     if self.n_codebook > 1:
+        #         for code_idx in range(self.n_codebook):
+        #             self.reconstruct_partial_codes(xs, 0, code_idx, mode, 'select')
+        #             self.reconstruct_partial_codes(xs, 0, code_idx, mode, 'add')
 
-        summary = accm.get_summary(n_inst)
+        summary = accm.get_summary(sample_count)
         summary['xs'] = xs
 
         return summary
@@ -272,7 +273,7 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
-
+            
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs)
@@ -373,7 +374,7 @@ class Trainer(TrainerTemplate):
     def logging(self, summary, scheduler=None, epoch=0, mode='train'):
         if self.distenv.master:  # Only log on master process
             # Log reconstructions
-            if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
+            if epoch % 100 == 1 or epoch % self.config.experiment.test_freq == 0:
                 self.reconstruct(summary['xs'], epoch, mode)
                 if self.n_codebook > 1:
                     for code_idx in range(self.n_codebook):
