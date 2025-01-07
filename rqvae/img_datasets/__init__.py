@@ -121,20 +121,21 @@ class MultiHeightScoreDataset(ScoreDataset):
         for i, sample in enumerate(tqdm(self.samples, desc='Loading image heights')):
             img = self.loader(sample)
             height = img.height
+            if img.width < height:  # Drop portrait images
+                continue
             if 70 <= height <= 390:  # Only keep samples within valid height range
                 heights.append(height)
                 valid_indices.append(i)
-        
         # Filter samples to only keep valid ones
         self.samples = [self.samples[i] for i in valid_indices]
         self.heights = heights
         
         # Create bucket indices that will be used by DistributedBucketSampler
         self.bucket_indices = {
-            '70_130': [i for i, h in enumerate(heights) if 70 <= h < 130],
-            '130_260': [i for i, h in enumerate(heights) if 130 <= h < 260], 
-            '260_360': [i for i, h in enumerate(heights) if 260 <= h < 360],
-            '360_390': [i for i, h in enumerate(heights) if 360 <= h <= 390]
+            '70_130': [i for i, h in enumerate(heights) if 70 <= h < 130], # 64px crop
+            '130_260': [i for i, h in enumerate(heights) if 130 <= h < 260], # 128px crop
+            '260_360': [i for i, h in enumerate(heights) if 260 <= h < 360], # 256px crop
+            '360_390': [i for i, h in enumerate(heights) if 360 <= h <= 390] # 352px crop
         }
 
         # Get indices for images with height >= 260px
@@ -236,8 +237,8 @@ def create_dataset(config, is_eval=False, logger=None):
         root = root if root else 'data/LSDSQ_flattened_240_gray'
         dataset_trn = ScoreDataset(root, split='train', transform=transforms_trn)
         dataset_val = ScoreDataset(root, split='val', transform=transforms_val)
-    elif config.dataset.type == 'LSD_360anchored_gray':
-        root = root if root else 'data/LSD_360anchored_gray'
+    elif config.dataset.type in ['LSD_360anchored_gray', 'LSD_360anchored_gray_debug']:
+        root = root if root else f'data/{config.dataset.type}'
         assert isinstance(config.experiment.batch_size, DictConfig)
         dataset_trn = MultiHeightScoreDataset(root, split='train', transform=transforms_trn)
         dataset_val = MultiHeightScoreDataset(root, split='val', transform=transforms_val)
