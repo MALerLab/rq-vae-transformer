@@ -179,6 +179,7 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad()
             xs = inputs[0].to(self.device)
+            # print(f"[{self.distenv.world_rank}]xs.shape: {xs.shape}")
             
             sample_count += xs.shape[0]
 
@@ -275,6 +276,7 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
+            # print(f"[{self.distenv.world_rank}]xs.shape: {xs.shape}")
             
             outputs = model(xs)
             xs_recon = outputs[0]
