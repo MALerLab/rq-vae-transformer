@@ -126,7 +126,7 @@ class RQVAE(Stage1Model):
             raise ValueError('incompatible loss type')
 
         loss_latent = quant_loss
-
+        
         if valid:
             loss_recon = loss_recon * xs.shape[0] * xs.shape[1]
             loss_latent = loss_latent * xs.shape[0]
