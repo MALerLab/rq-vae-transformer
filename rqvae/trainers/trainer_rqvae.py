@@ -238,6 +238,8 @@ class Trainer(TrainerTemplate):
 
                 line = accm.get_summary().print_line()
                 pbar.set_description(line)
+
+        sample_count = sample_count * self.distenv.world_size # Multiplied by world size to get the total number of samples
         line = accm.get_summary(sample_count).print_line()
 
         # if self.distenv.master and verbose:
