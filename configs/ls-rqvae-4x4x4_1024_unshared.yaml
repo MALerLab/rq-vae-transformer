@@ -1,7 +1,7 @@
 dataset:
   type: LSD_360anchored_gray
   transforms:
-    type: lsd_randomcrop_64
+    type: lsd_randomcrop_64 # Dummy. Refer to rqvae.img_datasets.MultiHeightScoreDataset
 
 arch:
   type: rq-vae
@@ -10,8 +10,8 @@ arch:
     bottleneck_type: rq
     embed_dim: 256 # quant dim
     n_embed: 1024 # n_codebook
-    latent_shape: [ 4, 4, 256 ]  # could be inferred: H=W=resolution / (2 ** num_down), D=embed_dim
-    code_shape: [ 4, 4, 4 ] # 7x7x4 112x112라서 112/16=7
+    latent_shape: [ 4, 4, 256 ]  # Dummy; for 64*64 crop(64/16=4), there are 128, 256, 352 crops also
+    code_shape: [ 4, 4, 4 ] # Dummy; for 64*64 crop(64/16=4), there are 128, 256, 352 crops also
     shared_codebook: False
     decay: 0.99
     restart_unused_codes: true
@@ -27,7 +27,7 @@ arch:
     ch: 128 # enc/dec latent ch
     ch_mult: [ 1, 1, 2, 2, 4]  # 레이어 수(압축률: 2^(len(ch_mult)-1) 2^4=16 -> 코드 하나 커버리지 16*16픽셀
     num_res_blocks: 2
-    attn_resolutions: [ 8 ]  # 셀프 어텐션이 일어나는 해상도(conv stack 안에서)
+    attn_resolutions: [ 16 ]  # 셀프 어텐션이 일어나는 해상도(conv stack 안에서) # 16으로 바꿈! self attention 함
     dropout: 0.00
   checkpointing: true
  
@@ -47,9 +47,9 @@ optimizer:
 
 
 experiment:
-  batch_size: 196
-  epochs: 20000
-  save_ckpt_freq: 250
+  batch_size: {'70_130': 256, '130_260': 256, '260_360': 64, '360_390': 5} # Dynamic batch size for each bucket; batch size are low because of lack of data for the POC now
+  epochs: 100000
+  save_ckpt_freq: 1000
   test_freq: 1
 
 gan:
