@@ -27,7 +27,7 @@ arch:
     ch: 128 # enc/dec latent ch
     ch_mult: [ 1, 1, 2, 2, 4]  # 레이어 수(압축률: 2^(len(ch_mult)-1) 2^4=16 -> 코드 하나 커버리지 16*16픽셀
     num_res_blocks: 2
-    attn_resolutions: [ 16 ]  # 셀프 어텐션이 일어나는 해상도(conv stack 안에서) # 16으로 바꿈! self attention 함
+    attn_resolutions: [ 8 ]  # 셀프 어텐션이 일어나는 해상도(conv stack 안에서) 
     dropout: 0.00
   checkpointing: true
  
