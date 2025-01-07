@@ -20,6 +20,7 @@ import torchvision
 from torchvision.datasets import ImageNet
 from tqdm import tqdm
 from omegaconf import DictConfig
+import math
 
 from .lsun import LSUNClass
 from .ffhq import ImageFolder, FFHQ
@@ -30,50 +31,80 @@ import torchvision.transforms as transforms
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
 
 class VariableBatchDistributedBucketSampler(torch.utils.data.distributed.DistributedSampler):
-  def __init__(self, dataset, batch_sizes, num_replicas=None, rank=None, shuffle=True, seed=0):
-    super().__init__(dataset, num_replicas=num_replicas, rank=rank, shuffle=shuffle, seed=seed)
-    self.buckets = list(dataset.bucket_indices.keys())
-    self.bucket_sizes = dataset.get_bucket_sizes()
-    # Only print once from rank 0
-    if rank == 0:
-      print("Bucket sizes:", self.bucket_sizes)
+  def __init__(self, dataset, batch_sizes, num_replicas=None, rank=None, shuffle=True, seed=0, drop_last=False):
+    """
+    Args:
+      dataset: MultiHeightScoreDataset instance
+      batch_sizes: Dict mapping bucket names to batch sizes
+      num_replicas: Number of distributed processes
+      rank: Rank of current process
+      shuffle: Whether to shuffle samples within buckets
+      seed: Random seed for shuffling
+      drop_last: Whether to drop last incomplete batch
+    """
+    super().__init__(dataset, num_replicas=num_replicas, rank=rank, shuffle=shuffle, seed=seed, drop_last=drop_last)
+
+    # Store batch size per bucket
     self.batch_sizes = batch_sizes
+    self.bucket_indices = dataset.bucket_indices
+
+    # Calculate number of samples per bucket that each process will handle
+    self.bucket_samples_per_replica = {}
+    for bucket, indices in self.bucket_indices.items():
+      num_samples = len(indices)
+      batch_size = self.batch_sizes[bucket]
+      
+      # Ensure even distribution across replicas by rounding down to nearest batch_size multiple
+      samples_per_rank = (num_samples // self.num_replicas // batch_size) * batch_size
+      self.bucket_samples_per_replica[bucket] = samples_per_rank
+
+    print("Bucket samples per replica:", self.bucket_samples_per_replica)
+
+    # Total length is sum of samples across all buckets
+    self.total_size = sum(self.bucket_samples_per_replica.values())
 
   def __iter__(self):
-    # deterministically shuffle based on epoch and seed
+    # Deterministically shuffle based on epoch and seed
     g = torch.Generator()
     g.manual_seed(self.seed + self.epoch)
 
     indices = []
-    for bucket in self.buckets:
-      bucket_indices = self.dataset.bucket_indices[bucket]
-      batch_size = self.batch_sizes[bucket]
-      
+    for bucket, bucket_indices in self.bucket_indices.items():
+      bucket_indices = bucket_indices.copy()
       if self.shuffle:
-        # Shuffle indices within each bucket
-        indices_bucket = torch.randperm(len(bucket_indices), generator=g).tolist()
-        indices_bucket = [bucket_indices[i] for i in indices_bucket]
-      else:
-        indices_bucket = bucket_indices
+        rand_indices = torch.randperm(len(bucket_indices), generator=g).tolist()
+        bucket_indices = [bucket_indices[i] for i in rand_indices]
 
-      # Add padding to make divisible by (batch_size * num_replicas)
-      padding_size = (batch_size * self.num_replicas - len(indices_bucket) % (batch_size * self.num_replicas)) % (batch_size * self.num_replicas)
-      if padding_size > 0:
-        indices_bucket = indices_bucket + indices_bucket[:padding_size]
+      batch_size = self.batch_sizes[bucket]
+      samples_per_replica = self.bucket_samples_per_replica[bucket]
+      
+      # Ensure even distribution by using same number of samples per replica
+      start_idx = self.rank * samples_per_replica
+      end_idx = start_idx + samples_per_replica
+      rank_indices = bucket_indices[start_idx:end_idx]
 
-      # Verify divisibility before subsampling
-      if len(indices_bucket) % (batch_size * self.num_replicas) != 0:
-        raise ValueError(f"Bucket {bucket} size {len(indices_bucket)} is not divisible by batch_size ({batch_size}) * num_replicas ({self.num_replicas})")
-
-      # Subsample for this rank
-      indices_bucket = indices_bucket[self.rank * batch_size:len(indices_bucket):self.num_replicas * batch_size]
-      indices.extend(indices_bucket)
+      # Create batches
+      for i in range(0, len(rank_indices), batch_size):
+        batch_indices = rank_indices[i:i + batch_size]
+        if len(batch_indices) == batch_size:  # Only add complete batches
+          indices.append(batch_indices)
 
     if self.shuffle:
-      # Shuffle all indices
-      indices = torch.tensor(indices)[torch.randperm(len(indices), generator=g)].tolist()
+      # Shuffle order of batches
+      rand_batch_indices = torch.randperm(len(indices), generator=g).tolist()
+      indices = [indices[i] for i in rand_batch_indices]
 
     return iter(indices)
+
+  def __len__(self):
+    # Calculate total number of batches across all buckets
+    total_batches = 0
+    for bucket, samples_per_replica in self.bucket_samples_per_replica.items():
+      batch_size = self.batch_sizes[bucket]
+      total_batches += math.ceil(samples_per_replica / batch_size)
+    return total_batches
+
+
 
 class ScoreDataset(ImageFolder):
     def __init__(self, root, split='train', **kwargs):
@@ -86,10 +117,16 @@ class MultiHeightScoreDataset(ScoreDataset):
         super().__init__(root, split, **kwargs)
         
         heights = []
-        for sample in tqdm(self.samples, desc='Loading image heights'):
+        valid_indices = []
+        for i, sample in enumerate(tqdm(self.samples, desc='Loading image heights')):
             img = self.loader(sample)
-            heights.append(img.height)
-
+            height = img.height
+            if 70 <= height <= 390:  # Only keep samples within valid height range
+                heights.append(height)
+                valid_indices.append(i)
+        
+        # Filter samples to only keep valid ones
+        self.samples = [self.samples[i] for i in valid_indices]
         self.heights = heights
         
         # Create bucket indices that will be used by DistributedBucketSampler
