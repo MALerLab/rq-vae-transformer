@@ -14,6 +14,7 @@
 
 import os
 import logging
+from rqvae.img_datasets import MultiHeightScoreDataset, VariableBatchDistributedBucketSampler
 
 import torch
 
@@ -62,30 +63,61 @@ class TrainerTemplate():
         self.dataset_trn = dataset_trn
         self.dataset_val = dataset_val
 
-        self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
-            self.dataset_trn,
-            num_replicas=self.distenv.world_size,
-            rank=self.distenv.world_rank,
-            shuffle=True,
-            seed=self.config.seed,
-        )
-        self.loader_trn = DataLoader(
-            self.dataset_trn, sampler=self.sampler_trn, shuffle=False, pin_memory=True,
-            batch_size=config.experiment.batch_size,
-            num_workers=num_workers,
-        )
+        
+        if isinstance(self.dataset_trn, MultiHeightScoreDataset):
+            print("Training dataset is MultiHeightScoreDataset")
+            self.sampler_trn = VariableBatchDistributedBucketSampler(
+                self.dataset_trn,
+                batch_sizes=self.config.experiment.batch_size,
+                num_replicas=self.distenv.world_size,
+                rank=self.distenv.world_rank,
+                shuffle=True,
+                seed=self.config.seed
+            )
+            self.loader_trn = DataLoader(
+                self.dataset_trn, sampler=self.sampler_trn, shuffle=False, pin_memory=True,
+                num_workers=num_workers,
+            )
+        else:
+            self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
+                self.dataset_trn,
+                num_replicas=self.distenv.world_size,
+                rank=self.distenv.world_rank,
+                shuffle=True,
+                seed=self.config.seed,
+            )
+            self.loader_trn = DataLoader(
+                self.dataset_trn, sampler=self.sampler_trn, shuffle=False, pin_memory=True,
+                batch_size=config.experiment.batch_size,
+                num_workers=num_workers,
+            )
 
-        self.sampler_val = torch.utils.data.distributed.DistributedSampler(
-            self.dataset_val,
-            num_replicas=self.distenv.world_size,
-            rank=self.distenv.world_rank,
-            shuffle=False
-        )
-        self.loader_val = DataLoader(
-            self.dataset_val, sampler=self.sampler_val, shuffle=False, pin_memory=True,
-            batch_size=config.experiment.batch_size,
-            num_workers=num_workers
-        )
+        if isinstance(self.dataset_val, MultiHeightScoreDataset):
+            print("Validation dataset is MultiHeightScoreDataset")
+            self.sampler_val = VariableBatchDistributedBucketSampler(
+                self.dataset_val,
+                batch_sizes=self.config.experiment.batch_size,
+                num_replicas=self.distenv.world_size,
+                rank=self.distenv.world_rank,
+                shuffle=False,
+                seed=self.config.seed
+            )
+            self.loader_val = DataLoader(
+                self.dataset_val, sampler=self.sampler_val, shuffle=False, pin_memory=True,
+                num_workers=num_workers,
+            )
+        else:
+            self.sampler_val = torch.utils.data.distributed.DistributedSampler(
+                self.dataset_val,
+                num_replicas=self.distenv.world_size,
+                rank=self.distenv.world_rank,
+                shuffle=False
+            )
+            self.loader_val = DataLoader(
+                self.dataset_val, sampler=self.sampler_val, shuffle=False, pin_memory=True,
+                batch_size=config.experiment.batch_size,
+                num_workers=num_workers
+            )
 
     def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
         raise NotImplementedError
