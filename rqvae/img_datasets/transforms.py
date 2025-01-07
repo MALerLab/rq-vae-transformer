@@ -74,7 +74,7 @@ def create_transforms(config, split='train', is_eval=False):
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5])
         ]
-    elif config.transforms.type == 'lsd_randomcrop_64':
+    elif config.transforms.type == 'lsd_randomcrop_64': # Dummy
         transforms_ = [
             transforms.Grayscale(num_output_channels=1),
             transforms.RandomCrop(64),
