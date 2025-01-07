@@ -1,3 +1,5 @@
+seed: 42
+
 dataset:
   type: LSD_360anchored_gray
   transforms:
@@ -48,9 +50,10 @@ optimizer:
 
 experiment:
   batch_size: {'70_130': 256, '130_260': 256, '260_360': 64, '360_390': 5} # Dynamic batch size for each bucket; batch size are low because of lack of data for the POC now
+  val_batch_size: {'70_130': 64, '130_260': 64, '260_360': 16, '360_390': 1}
   epochs: 100000
   save_ckpt_freq: 1000
-  test_freq: 1
+  test_freq: 10
 
 gan:
   disc:
