@@ -75,9 +75,11 @@ class TrainerTemplate():
                 seed=self.config.seed
             )
             self.loader_trn = DataLoader(
-                self.dataset_trn, sampler=self.sampler_trn, shuffle=False, pin_memory=True,
+                self.dataset_trn, batch_sampler=self.sampler_trn, shuffle=False, pin_memory=True,
                 num_workers=num_workers,
             )
+            print("Dataset trn length:", len(self.dataset_trn))
+            print("Loader trn length:", len(self.loader_trn))
         else:
             self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
                 self.dataset_trn,
@@ -87,7 +89,7 @@ class TrainerTemplate():
                 seed=self.config.seed,
             )
             self.loader_trn = DataLoader(
-                self.dataset_trn, sampler=self.sampler_trn, shuffle=False, pin_memory=True,
+                self.dataset_trn, self.sampler_trn, shuffle=False, pin_memory=True,
                 batch_size=config.experiment.batch_size,
                 num_workers=num_workers,
             )
@@ -96,16 +98,18 @@ class TrainerTemplate():
             print("Validation dataset is MultiHeightScoreDataset")
             self.sampler_val = VariableBatchDistributedBucketSampler(
                 self.dataset_val,
-                batch_sizes=self.config.experiment.batch_size,
+                batch_sizes=self.config.experiment.val_batch_size,
                 num_replicas=self.distenv.world_size,
                 rank=self.distenv.world_rank,
                 shuffle=False,
                 seed=self.config.seed
             )
             self.loader_val = DataLoader(
-                self.dataset_val, sampler=self.sampler_val, shuffle=False, pin_memory=True,
+                self.dataset_val, batch_sampler=self.sampler_val, shuffle=False, pin_memory=True,
                 num_workers=num_workers,
             )
+            print("Dataset val length:", len(self.dataset_val))
+            print("Loader val length:", len(self.loader_val))
         else:
             self.sampler_val = torch.utils.data.distributed.DistributedSampler(
                 self.dataset_val,
