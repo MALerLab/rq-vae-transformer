@@ -128,9 +128,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+data/*
 data/LSDSQ_flattened_240_gray/*
 data/Olimpic_grandstaff_128_gray/*
-data/LSD_360anchored_gray/*
+data/LSD_360anchored_gray_POC/*
 logs/
 wandb/
 
