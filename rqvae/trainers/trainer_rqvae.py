@@ -382,7 +382,7 @@ class Trainer(TrainerTemplate):
 
                 if isinstance(self.dataset_val, MultiHeightScoreDataset):
                     xll = []
-                    it = epoch % (len(self.dataset_val.big_item_idx) // 16 - 1)
+                    it = epoch % (len(self.dataset_val.big_indices) // 16 - 1)
                     for i in range(16 * it, 16 * (it + 1)):
                         xl = self.dataset_val.get_big_items(i)[0]
                         xll.append(xl)
@@ -442,7 +442,6 @@ class Trainer(TrainerTemplate):
 
     @torch.no_grad()
     def reconstruct_big(self, xs, epoch, mode='valid'):
-        print("!!!!!!!!\n")
         model = self.model_ema if 'ema' in mode else self.model
         model.eval()
 
