@@ -114,17 +114,38 @@ def augment_defaults(config):
 def augment_dist_defaults(config, distenv):
     config = config.copy()
 
-    local_batch_size = config.experiment.batch_size
-    world_batch_size = distenv.world_size * local_batch_size
-    total_batch_size = config.experiment.get('total_batch_size', world_batch_size)
+    if isinstance(config.experiment.batch_size, DictConfig):
+        # Handle dynamic batch sizes for different buckets
+        local_batch_sizes = config.experiment.batch_size
+        world_batch_sizes = {k: distenv.world_size * v for k, v in local_batch_sizes.items()}
+        total_batch_sizes = config.experiment.get('total_batch_size', world_batch_sizes)
 
-    if total_batch_size % world_batch_size != 0:
-        raise ValueError('total batch size must be divisible by world batch size')
+        if isinstance(total_batch_sizes, dict):
+            # Verify each bucket's total batch size is divisible by world batch size
+            for bucket in world_batch_sizes:
+                if total_batch_sizes[bucket] % world_batch_sizes[bucket] != 0:
+                    raise ValueError(f'total batch size for bucket {bucket} must be divisible by world batch size')
+            grad_accm_steps = {k: total_batch_sizes[k] // world_batch_sizes[k] for k in world_batch_sizes}
+        else:
+            # Single total batch size value provided
+            grad_accm_steps = {}
+            for bucket, world_bs in world_batch_sizes.items():
+                if total_batch_sizes % world_bs != 0:
+                    raise ValueError(f'total batch size must be divisible by world batch size for bucket {bucket}')
+                grad_accm_steps[bucket] = total_batch_sizes // world_bs
+
     else:
+        # Original single batch size logic
+        local_batch_size = config.experiment.batch_size
+        world_batch_size = distenv.world_size * local_batch_size
+        total_batch_size = config.experiment.get('total_batch_size', world_batch_size)
+
+        if total_batch_size % world_batch_size != 0:
+            raise ValueError('total batch size must be divisible by world batch size')
         grad_accm_steps = total_batch_size // world_batch_size
 
     config.optimizer.grad_accm_steps = grad_accm_steps
-    config.experiment.total_batch_size = total_batch_size
+    config.experiment.total_batch_size = total_batch_sizes if isinstance(config.experiment.batch_size, DictConfig) else total_batch_size
 
     return config
 
