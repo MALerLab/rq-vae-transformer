@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "7d55d3e0db0a8ce9cb9500cd07d9ca5e33fed897d06c8649a523dedc288ef5bc"
+            "sha256": "c7a2432c6ea1012aaa1ba7f482fc184904da7967cc3be64bf38e5b782bea2fb8"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -16,6 +16,12 @@
         ]
     },
     "default": {
+        "antlr4-python3-runtime": {
+            "hashes": [
+                "sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b"
+            ],
+            "version": "==4.9.3"
+        },
         "asttokens": {
             "hashes": [
                 "sha256:0dcd8baa8d62b0c1d118b399b2ddba3c4aff271d0d7a9e0d4c1681c79035bbc7",
@@ -869,6 +875,15 @@
             ],
             "markers": "python_version >= '3'",
             "version": "==12.4.127"
+        },
+        "omegaconf": {
+            "hashes": [
+                "sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b",
+                "sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.6'",
+            "version": "==2.3.0"
         },
         "packaging": {
             "hashes": [

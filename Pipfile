@@ -21,6 +21,7 @@ pycocotools = "*"
 clip = {editable = true, git = "https://github.com/openai/CLIP.git"}
 numpy = "==1.23.5"
 protobuf = "==3.20.3"
+omegaconf = "*"
 
 [dev-packages]
 
