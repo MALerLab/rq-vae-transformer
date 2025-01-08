@@ -389,7 +389,12 @@ class Trainer(TrainerTemplate):
                     xll = []
                     it = epoch % (len(self.dataset_val.big_indices) // 16 - 1)
                     for i in range(16 * it, 16 * (it + 1)):
-                        xl = self.dataset_val.get_big_items(i)[0]
+                        if mode in ['valid', 'valid_ema']:
+                            xl = self.dataset_val.get_big_items(i)[0]
+                        elif mode == 'train':
+                            xl = self.dataset_trn.get_big_items(i)[0]
+                        else:
+                            raise ValueError(f"Invalid mode: {mode}")
                         xll.append(xl)
                     xll = torch.stack(xll, dim=0)
                     self.reconstruct_big(xll, epoch=epoch, mode=mode)
