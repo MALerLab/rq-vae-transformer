@@ -31,6 +31,7 @@ arch:
     num_res_blocks: 2
     attn_resolutions: [ 8 ]  # 셀프 어텐션이 일어나는 해상도(conv stack 안에서) 
     dropout: 0.00
+    enc_no_mid_attn: true
   checkpointing: true
  
 
